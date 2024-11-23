@@ -90,8 +90,9 @@ func (cs *ClientStream) send(payloadBytes []byte, packetType pb.PacketType) erro
 		return err
 	}
 
-	encoder := pw_hdlc.NewEncoder(cs.cc.conn, uint64(kDefaultRpcAddress))
-	_, err = encoder.WritePayload(request)
+	encoder := pw_hdlc.NewEncoder(uint64(kDefaultRpcAddress))
+	frame := encoder.Encode(request)
+	_, err = cs.cc.conn.Write(frame)
 	if err != nil {
 		return err
 	}

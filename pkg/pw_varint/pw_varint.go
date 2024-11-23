@@ -41,8 +41,8 @@ func If[T any](cond bool, vTrue, vFalse T) T {
 
 func Encode(
 	val uint64,
-	max_output int,
-	format Format) ([]byte, error) {
+	format Format,
+) []byte {
 	output := make([]byte, 10)
 	written := 0
 
@@ -58,10 +58,6 @@ func Encode(
 	}
 
 	for val != 0 {
-		if written >= max_output {
-			return nil, ErrOutputTooSmall
-		}
-
 		last_byte := (val >> 7) == 0
 
 		// Grab 7 bits and set the eighth according to the continuation bit.
@@ -78,7 +74,7 @@ func Encode(
 		val >>= 7
 	}
 
-	return output[0:written], nil
+	return output[0:written]
 }
 
 func Decode(input []byte, format Format) (uint64, int) {
