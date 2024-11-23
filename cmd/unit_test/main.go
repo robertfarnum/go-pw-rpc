@@ -11,15 +11,10 @@ import (
 
 func main() {
 	ctx := context.Background()
-	clientConn := pw_rpc.NewSocketConn("localhost", 8111)
-	err := clientConn.Connect()
-	if err != nil {
-		fmt.Println("Error connecting:", err)
-		os.Exit(1)
-	}
-	defer clientConn.Close()
+	cc := pw_rpc.NewClientConn("localhost", 8111)
+	defer cc.Close()
 
-	utc := pb.NewUnitTestClient(clientConn)
+	utc := pb.NewUnitTestClient(cc)
 	in := &pb.TestRunRequest{
 		ReportPassedExpectations: true,
 		TestSuite:                []string{"Passing", "Failing"},

@@ -28,26 +28,26 @@ var (
 )
 
 type ClientStream struct {
-	desc   *grpc.StreamDesc
-	method string
-	opts   []grpc.CallOption
-	cc     *SocketConn
+	desc      *grpc.StreamDesc
+	method    string
+	opts      []grpc.CallOption
+	cc        *ClientConn
+	firstSend bool
 }
 
 func NewClientStream(ctx context.Context, desc *grpc.StreamDesc, cc grpc.ClientConnInterface, method string, opts ...grpc.CallOption) (grpc.ClientStream, error) {
-	clientConn, ok := cc.(*SocketConn)
+	clientConn, ok := cc.(*ClientConn)
 	if !ok {
 		return nil, fmt.Errorf("failed to cast *ClientConn")
 	}
 
 	cs := &ClientStream{
-		desc:   desc,
-		cc:     clientConn,
-		method: method,
-		opts:   opts,
+		desc:      desc,
+		cc:        clientConn,
+		method:    method,
+		opts:      opts,
+		firstSend: true,
 	}
-
-	cs.send([]byte{}, pb.PacketType_REQUEST)
 
 	return cs, nil
 
@@ -100,6 +100,11 @@ func (cs *ClientStream) send(payloadBytes []byte, packetType pb.PacketType) erro
 }
 
 func (cs *ClientStream) SendMsg(m any) error {
+	if cs.firstSend {
+		cs.send([]byte{}, pb.PacketType_REQUEST)
+		cs.firstSend = false
+	}
+
 	payload, ok := m.(protoreflect.ProtoMessage)
 	if !ok {
 		return fmt.Errorf("message not a ProtoMessage")

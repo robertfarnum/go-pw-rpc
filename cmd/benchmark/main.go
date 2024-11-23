@@ -48,15 +48,10 @@ func RunBiDirectional(ctx context.Context, bc pb.BenchmarkClient) error {
 
 func main() {
 	ctx := context.Background()
-	clientConn := pw_rpc.NewSocketConn("localhost", 8111)
-	err := clientConn.Connect()
-	if err != nil {
-		fmt.Println("Error connecting:", err)
-		os.Exit(1)
-	}
-	defer clientConn.Close()
+	cc := pw_rpc.NewClientConn("localhost", 8111)
+	defer cc.Close()
 
-	bc := pb.NewBenchmarkClient(clientConn)
+	bc := pb.NewBenchmarkClient(cc)
 
 	RunUnary(ctx, bc)
 
