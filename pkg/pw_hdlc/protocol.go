@@ -33,6 +33,7 @@ var (
 	ErrUnavailable       = errors.New("unavailable")
 	ErrResourceExhausted = errors.New("resource exhausted")
 	ErrInvalidArgument   = errors.New("invalid argument")
+	ErrShortBuffer       = errors.New("short buffer")
 )
 
 func NeedsEscaping(b byte) bool {

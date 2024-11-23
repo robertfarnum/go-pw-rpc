@@ -4,20 +4,38 @@ import (
 	"bytes"
 	"encoding/binary"
 	"hash/crc32"
+	"io"
 
 	"github.com/robertfarnum/go_pw_rpc/pkg/pw_varint"
 )
 
 type Encoder struct {
+	writer  io.Writer
 	address uint64
 	fcs     uint32
 }
 
-func NewEncoder(address uint64) *Encoder {
+func NewEncoder(writer io.Writer, address uint64) *Encoder {
 	return &Encoder{
+		writer:  writer,
 		address: address,
 		fcs:     0,
 	}
+}
+
+func (e *Encoder) Encode(payload []byte) error {
+	frame := e.startFrame(e.address, kUnnumberedUFrame)
+
+	frame = append(frame, e.getPayload(payload)...)
+
+	frame = append(frame, e.finishFrame()...)
+
+	_, err := e.writer.Write(frame)
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func (e *Encoder) getPayload(payload []byte) []byte {
@@ -52,14 +70,4 @@ func (e *Encoder) startFrame(address uint64, control byte) []byte {
 	startFrame = append(startFrame, control)
 
 	return startFrame
-}
-
-func (e *Encoder) Encode(payload []byte) []byte {
-	frame := e.startFrame(e.address, kUnnumberedUFrame)
-
-	frame = append(frame, e.getPayload(payload)...)
-
-	frame = append(frame, e.finishFrame()...)
-
-	return frame
 }

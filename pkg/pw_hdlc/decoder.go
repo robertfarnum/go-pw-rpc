@@ -32,21 +32,7 @@ func NewDecoder(reader io.Reader, address uint64) *Decoder {
 	}
 }
 
-func (d *Decoder) parse(frame []byte) (*Frame, error) {
-	address, addressSize := pw_varint.Decode(frame, pw_varint.OneTerminatedLeastSignificant)
-
-	dataSize := len(frame) - addressSize - kControlSize - kFcsSize
-
-	if addressSize < 1 || dataSize < 0 {
-		return nil, ErrDataLoss
-	}
-
-	start := addressSize + 1
-	end := start + dataSize
-	return NewFrame(address, frame[addressSize], frame[start:end]), nil
-}
-
-func (d *Decoder) Process() (*Frame, error) {
+func (d *Decoder) Decode() (*Frame, error) {
 	buf := make([]byte, 1)
 
 	for {
@@ -63,6 +49,21 @@ func (d *Decoder) Process() (*Frame, error) {
 
 		return frame, err
 	}
+}
+
+func (d *Decoder) parse(frame []byte) (*Frame, error) {
+	address, addressSize := pw_varint.Decode(frame, pw_varint.OneTerminatedLeastSignificant)
+
+	dataSize := len(frame) - addressSize - kControlSize - kFcsSize
+
+	if addressSize < 1 || dataSize < 0 {
+		return nil, ErrDataLoss
+	}
+
+	start := addressSize + 1
+	end := start + dataSize
+
+	return NewFrame(address, frame[addressSize], frame[start:end]), nil
 }
 
 func (d *Decoder) reset() {

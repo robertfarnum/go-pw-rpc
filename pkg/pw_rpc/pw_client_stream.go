@@ -90,9 +90,8 @@ func (cs *ClientStream) send(payloadBytes []byte, packetType pb.PacketType) erro
 		return err
 	}
 
-	encoder := pw_hdlc.NewEncoder(uint64(kDefaultRpcAddress))
-	frame := encoder.Encode(request)
-	_, err = cs.cc.conn.Write(frame)
+	encoder := pw_hdlc.NewEncoder(cs.cc.conn, uint64(kDefaultRpcAddress))
+	err = encoder.Encode(request)
 	if err != nil {
 		return err
 	}
@@ -130,7 +129,7 @@ func (cs *ClientStream) RecvMsg(m any) error {
 	}
 
 	decoder := pw_hdlc.NewDecoder(cs.cc.conn, uint64(kDefaultRpcAddress))
-	frame, err := decoder.Process()
+	frame, err := decoder.Decode()
 	if err != nil {
 		return err
 	}
