@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os"
 	"strings"
 
 	"google.golang.org/grpc"
@@ -12,99 +11,87 @@ import (
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/reflect/protoreflect"
 
-	"github.com/robertfarnum/go_pw_rpc/pkg/pw_hdlc"
 	"github.com/robertfarnum/go_pw_rpc/pkg/pw_rpc/pb"
 )
 
 const (
 	k65599HashConstant = uint32(65599)
+	kHDLCChannel       = 1
 )
 
 var (
-	kDefaultRpcAddress = 'R'
-	kDefaultLogAddress = 1
-
 	ErrBadAddress = errors.New("bad address")
 )
 
-type ClientStream struct {
-	desc      *grpc.StreamDesc
-	method    string
-	opts      []grpc.CallOption
-	cc        *ClientConn
-	firstSend bool
+type ClientStreamKey struct {
+	serviceId uint32
+	methodId  uint32
+}
+type clientStream struct {
+	desc   *grpc.StreamDesc
+	method string
+	key    ClientStreamKey
+	opts   []grpc.CallOption
+	cc     *ClientConn
+	ch     chan (*pb.RpcPacket)
+	ctx    context.Context
+	cancel context.CancelFunc
 }
 
-func NewClientStream(ctx context.Context, desc *grpc.StreamDesc, cc grpc.ClientConnInterface, method string, opts ...grpc.CallOption) (grpc.ClientStream, error) {
+func newClientStream(ctx context.Context, desc *grpc.StreamDesc, cc grpc.ClientConnInterface, method string, opts ...grpc.CallOption) (*clientStream, error) {
 	clientConn, ok := cc.(*ClientConn)
 	if !ok {
 		return nil, fmt.Errorf("failed to cast *ClientConn")
 	}
 
-	cs := &ClientStream{
-		desc:      desc,
-		cc:        clientConn,
-		method:    method,
-		opts:      opts,
-		firstSend: true,
+	methodParts := strings.Split(method, "/")
+	if len(methodParts) != 3 {
+		return nil, fmt.Errorf("invalid full method name")
+	}
+
+	key := ClientStreamKey{
+		serviceId: hash(methodParts[1]),
+		methodId:  hash(methodParts[2]),
+	}
+
+	ctx, cancel := context.WithCancel(ctx)
+
+	cs := &clientStream{
+		desc:   desc,
+		cc:     clientConn,
+		method: method,
+		key:    key,
+		opts:   opts,
+		ch:     make(chan *pb.RpcPacket),
+		ctx:    ctx,
+		cancel: cancel,
 	}
 
 	return cs, nil
 
 }
 
-func (cs *ClientStream) Header() (metadata.MD, error) {
+func (cs *clientStream) Key() ClientStreamKey {
+	return cs.key
+}
+
+func (cs *clientStream) Header() (metadata.MD, error) {
 	return nil, nil
 }
 
-func (cs *ClientStream) Trailer() metadata.MD {
+func (cs *clientStream) Trailer() metadata.MD {
 	return nil
 }
 
-func (cs *ClientStream) CloseSend() error {
+func (cs *clientStream) CloseSend() error {
 	return nil
 }
 
-func (cs *ClientStream) Context() context.Context {
-	return nil
+func (cs *clientStream) Context() context.Context {
+	return cs.ctx
 }
 
-func (cs *ClientStream) send(payloadBytes []byte, packetType pb.PacketType) error {
-	methodParts := strings.Split(cs.method, "/")
-	if len(methodParts) != 3 {
-		return fmt.Errorf("invalid full method name")
-	}
-
-	serviceId := hash(methodParts[1])
-	methodId := hash(methodParts[2])
-
-	packet := &pb.RpcPacket{
-		Type:      packetType,
-		ChannelId: 1,
-		ServiceId: serviceId,
-		MethodId:  methodId,
-		Payload:   payloadBytes,
-	}
-	request, err := proto.Marshal(packet)
-	if err != nil {
-		return err
-	}
-
-	encoder := pw_hdlc.NewEncoder(cs.cc.conn, uint64(kDefaultRpcAddress))
-	err = encoder.Encode(request)
-	if err != nil {
-		return err
-	}
-
-	return nil
-}
-
-func (cs *ClientStream) SendMsg(m any) error {
-	if cs.firstSend {
-		cs.send([]byte{}, pb.PacketType_REQUEST)
-		cs.firstSend = false
-	}
-
+func (cs *clientStream) SendMsg(m any) error {
 	payload, ok := m.(protoreflect.ProtoMessage)
 	if !ok {
 		return fmt.Errorf("message not a ProtoMessage")
@@ -115,41 +102,62 @@ func (cs *ClientStream) SendMsg(m any) error {
 	}
 
 	packetType := pb.PacketType_REQUEST
+
 	if cs.desc.ClientStreams {
+		err = cs.send([]byte{}, packetType)
+		if err != nil {
+			return err
+		}
 		packetType = pb.PacketType_CLIENT_STREAM
 	}
 
 	return cs.send(payloadBytes, packetType)
 }
 
-func (cs *ClientStream) RecvMsg(m any) error {
+func (cs *clientStream) RecvMsg(m any) error {
 	result, ok := m.(protoreflect.ProtoMessage)
 	if !ok {
 		return fmt.Errorf("message not a ProtoMessage")
 	}
 
-	decoder := pw_hdlc.NewDecoder(cs.cc.conn, uint64(kDefaultRpcAddress))
-	frame, err := decoder.Decode()
+	select {
+	case <-cs.ctx.Done():
+		return fmt.Errorf("cancel")
+	case packet, ok := <-cs.ch:
+		if !ok || packet.ChannelId != kHDLCChannel || packet.ServiceId != cs.key.serviceId || packet.MethodId != cs.key.methodId {
+			return fmt.Errorf("invalid packet received")
+		}
+
+		err := proto.Unmarshal(packet.Payload, result)
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (cs *clientStream) recv(packet *pb.RpcPacket) {
+	cs.ch <- packet
+}
+
+func (cs *clientStream) send(payloadBytes []byte, packetType pb.PacketType) error {
+
+	packet := &pb.RpcPacket{
+		Type:      packetType,
+		ChannelId: kHDLCChannel,
+		ServiceId: cs.key.serviceId,
+		MethodId:  cs.key.methodId,
+		Payload:   payloadBytes,
+	}
+	buf, err := proto.Marshal(packet)
 	if err != nil {
 		return err
 	}
 
-	switch frame.Address() {
-	case uint64(kDefaultRpcAddress):
-		packet := &pb.RpcPacket{}
-		err = proto.Unmarshal(frame.Payload(), packet)
-		if err != nil {
-			return err
-		}
-
-		err = proto.Unmarshal(packet.Payload, result)
-		if err != nil {
-			return err
-		}
-	case uint64(kDefaultLogAddress):
-		fmt.Fprintf(os.Stderr, "Pigweed Log: %s\n", string(frame.Payload()))
-	default:
-		return ErrBadAddress
+	err = cs.cc.Send(buf)
+	if err != nil {
+		return err
 	}
 
 	return nil

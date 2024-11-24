@@ -4,34 +4,45 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"time"
 
 	"github.com/robertfarnum/go_pw_rpc/cmd/benchmark/pb"
 	"github.com/robertfarnum/go_pw_rpc/pkg/pw_rpc"
 )
 
-func RunUnary(ctx context.Context, bc pb.BenchmarkClient) {
-	in := &pb.Payload{
-		Payload: []byte("Hello"),
-	}
-	out, err := bc.UnaryEcho(ctx, in)
-	if err != nil {
-		fmt.Println("UnaryEcho error:", err)
-		os.Exit(1)
-	}
+func RunUnary(ctx context.Context, bc pb.BenchmarkClient, count int) {
+	for i := 0; i < count; i++ {
+		str := fmt.Sprintf("Hello #%d", i)
+		in := &pb.Payload{
+			Payload: []byte(str),
+		}
 
-	fmt.Println("UnaryEcho() = " + string(out.Payload))
+		fmt.Printf("Sending UnaryEcho = %s\n", str)
+
+		out, err := bc.UnaryEcho(ctx, in)
+		if err != nil {
+			fmt.Println("UnaryEcho error:", err)
+			os.Exit(1)
+		}
+
+		fmt.Printf("Received UnaryEcho = %s\n", string(out.Payload))
+
+		time.Sleep(time.Second)
+	}
 }
 
-func RunBiDirectional(ctx context.Context, bc pb.BenchmarkClient) error {
+func RunBiDirectional(ctx context.Context, bc pb.BenchmarkClient, count int) error {
 	bid, err := bc.BidirectionalEcho(ctx)
 	if err != nil {
 		return err
 	}
 
 	go func() {
-		for i := 0; i < 10; i++ {
+		for i := 0; i < count; i++ {
+			str := fmt.Sprintf("Message %d", i)
+			fmt.Printf("Sending BiDirectional = %s\n", str)
 			bid.Send(&pb.Payload{
-				Payload: []byte(fmt.Sprintf("Message %d", i)),
+				Payload: []byte(str),
 			})
 		}
 	}()
@@ -39,11 +50,13 @@ func RunBiDirectional(ctx context.Context, bc pb.BenchmarkClient) error {
 	for {
 		out, err := bid.Recv()
 		if err != nil {
-			return err
+			break
 		}
 
-		fmt.Println(string(out.Payload))
+		fmt.Printf("Received BiDirectional = %s\n", string(out.Payload))
 	}
+
+	return nil
 }
 
 func main() {
@@ -53,7 +66,7 @@ func main() {
 
 	bc := pb.NewBenchmarkClient(cc)
 
-	RunUnary(ctx, bc)
+	go RunUnary(ctx, bc, 10)
 
-	RunBiDirectional(ctx, bc)
+	RunBiDirectional(ctx, bc, 10)
 }

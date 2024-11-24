@@ -5,25 +5,33 @@ import (
 	"encoding/binary"
 	"hash/crc32"
 	"io"
+	"sync"
 
 	"github.com/robertfarnum/go_pw_rpc/pkg/pw_varint"
 )
 
-type Encoder struct {
-	writer  io.Writer
-	address uint64
-	fcs     uint32
+type Encoder interface {
+	Encode(payload []byte) error
 }
 
-func NewEncoder(writer io.Writer, address uint64) *Encoder {
-	return &Encoder{
+func NewEncoder(writer io.Writer, address uint64) Encoder {
+	return &encoder{
 		writer:  writer,
 		address: address,
 		fcs:     0,
 	}
 }
 
-func (e *Encoder) Encode(payload []byte) error {
+type encoder struct {
+	writer  io.Writer
+	address uint64
+	fcs     uint32
+	mu      sync.Mutex
+}
+
+func (e *encoder) Encode(payload []byte) error {
+	e.mu.Lock()
+
 	frame := e.startFrame(e.address, kUnnumberedUFrame)
 
 	frame = append(frame, e.getPayload(payload)...)
@@ -32,13 +40,15 @@ func (e *Encoder) Encode(payload []byte) error {
 
 	_, err := e.writer.Write(frame)
 	if err != nil {
+		e.mu.Unlock()
 		return err
 	}
 
+	e.mu.Unlock()
 	return nil
 }
 
-func (e *Encoder) getPayload(payload []byte) []byte {
+func (e *encoder) getPayload(payload []byte) []byte {
 	e.fcs = crc32.Update(e.fcs, crc32.IEEETable, payload)
 
 	payload = bytes.Replace(payload, []byte{kFlag}, kEscapedFlag, -1)
@@ -47,16 +57,18 @@ func (e *Encoder) getPayload(payload []byte) []byte {
 	return payload
 }
 
-func (e *Encoder) finishFrame() []byte {
+func (e *encoder) finishFrame() []byte {
 	finishFrame := make([]byte, 4)
 
 	binary.LittleEndian.PutUint32(finishFrame, e.fcs)
+	e.fcs = 0
+
 	finishFrame = append(finishFrame, kFlag)
 
 	return finishFrame
 }
 
-func (e *Encoder) startFrame(address uint64, control byte) []byte {
+func (e *encoder) startFrame(address uint64, control byte) []byte {
 	startFrame := make([]byte, 0)
 
 	startFrame = append(startFrame, kFlag)

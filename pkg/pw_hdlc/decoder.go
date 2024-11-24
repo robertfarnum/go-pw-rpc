@@ -4,23 +4,17 @@ import (
 	"encoding/binary"
 	"hash/crc32"
 	"io"
+	"sync"
 
 	"github.com/robertfarnum/go_pw_rpc/pkg/pw_varint"
 )
 
-type Decoder struct {
-	reader            io.Reader
-	address           uint64
-	buffer            []byte
-	state             State
-	currentFrameSize  int
-	lastReadBytes     []byte
-	lastReadByteIndex int
-	fcs               uint32
+type Decoder interface {
+	Decode() (*Frame, error)
 }
 
-func NewDecoder(reader io.Reader, address uint64) *Decoder {
-	return &Decoder{
+func NewDecoder(reader io.Reader, address uint64) Decoder {
+	return &decoder{
 		reader:            reader,
 		address:           address,
 		buffer:            make([]byte, 0),
@@ -32,26 +26,43 @@ func NewDecoder(reader io.Reader, address uint64) *Decoder {
 	}
 }
 
-func (d *Decoder) Decode() (*Frame, error) {
+type decoder struct {
+	reader            io.Reader
+	address           uint64
+	buffer            []byte
+	state             State
+	currentFrameSize  int
+	lastReadBytes     []byte
+	lastReadByteIndex int
+	fcs               uint32
+	mu                sync.Mutex
+}
+
+func (d *decoder) Decode() (*Frame, error) {
+	d.mu.Lock()
+
 	buf := make([]byte, 1)
 
 	for {
 		_, err := d.reader.Read(buf)
 		if err != nil {
+			d.mu.Unlock()
 			return nil, ErrDataLoss
 		}
 		frame, err := d.process(buf[0])
 		if err == ErrUnavailable {
 			continue
 		} else if err != nil {
+			d.mu.Unlock()
 			return nil, err
 		}
 
+		d.mu.Unlock()
 		return frame, err
 	}
 }
 
-func (d *Decoder) parse(frame []byte) (*Frame, error) {
+func (d *decoder) parse(frame []byte) (*Frame, error) {
 	address, addressSize := pw_varint.Decode(frame, pw_varint.OneTerminatedLeastSignificant)
 
 	dataSize := len(frame) - addressSize - kControlSize - kFcsSize
@@ -66,7 +77,7 @@ func (d *Decoder) parse(frame []byte) (*Frame, error) {
 	return NewFrame(address, frame[addressSize], frame[start:end]), nil
 }
 
-func (d *Decoder) reset() {
+func (d *decoder) reset() {
 	d.currentFrameSize = 0
 	d.lastReadByteIndex = 0
 	d.fcs = 0
@@ -74,11 +85,11 @@ func (d *Decoder) reset() {
 	d.buffer = d.buffer[:0]
 }
 
-func (d *Decoder) escape(b byte) byte {
+func (d *decoder) escape(b byte) byte {
 	return b ^ kEscapeConstant
 }
 
-func (d *Decoder) process(newByte byte) (*Frame, error) {
+func (d *decoder) process(newByte byte) (*Frame, error) {
 	switch d.state {
 	case kInterFrame:
 		if newByte == kFlag {
@@ -97,13 +108,17 @@ func (d *Decoder) process(newByte byte) (*Frame, error) {
 	case kFrame:
 		if newByte == kFlag {
 			err := d.checkFrame()
-			if err == nil {
-				return d.parse(d.buffer[0:d.currentFrameSize])
+			if err != nil {
+				d.reset()
+
+				return nil, err
 			}
+
+			frame, err := d.parse(d.buffer[0:d.currentFrameSize])
 
 			d.reset()
 
-			return nil, err
+			return frame, err
 		}
 
 		if newByte == kEscape {
@@ -137,7 +152,7 @@ func (d *Decoder) process(newByte byte) (*Frame, error) {
 	return nil, ErrDataLoss
 }
 
-func (d *Decoder) appendByte(newByte byte) {
+func (d *decoder) appendByte(newByte byte) {
 	d.buffer = append(d.buffer, newByte)
 
 	if d.currentFrameSize >= len(d.lastReadBytes) {
@@ -153,7 +168,7 @@ func (d *Decoder) appendByte(newByte byte) {
 	d.currentFrameSize += 1
 }
 
-func (d *Decoder) checkFrame() error {
+func (d *decoder) checkFrame() error {
 	// Empty frames are not an error; repeated flag characters are okay.
 	if d.currentFrameSize == 0 {
 		return ErrUnavailable
@@ -177,7 +192,7 @@ func (d *Decoder) checkFrame() error {
 	return nil
 }
 
-func (d *Decoder) verifyFrameCheckSequence() bool {
+func (d *decoder) verifyFrameCheckSequence() bool {
 	// De-ring the last four bytes read, which at this point contain the FCS.
 	fcsBuffer := make([]byte, 4)
 	index := d.lastReadByteIndex
