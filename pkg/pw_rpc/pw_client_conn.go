@@ -6,6 +6,7 @@ import (
 	"net"
 	"os"
 	"sync"
+	"time"
 
 	"github.com/robertfarnum/go-pw-rpc/pkg/pw_hdlc"
 	"github.com/robertfarnum/go-pw-rpc/pkg/pw_rpc/pb"
@@ -146,11 +147,22 @@ func (cc *ClientConn) Invoke(ctx context.Context, method string, args, reply any
 	return err
 }
 
-func (cc *ClientConn) NewStream(ctx context.Context, desc *grpc.StreamDesc, method string, opts ...grpc.CallOption) (grpc.ClientStream, error) {
-	cc.connect()
+func (cc *ClientConn) NewStream(ctx context.Context, desc *grpc.StreamDesc, method string, opts ...grpc.CallOption) (stream grpc.ClientStream, err error) {
+	for attempts := 0; attempts < 10; attempts++ {
+		err = cc.connect()
+		if err != nil {
+			fmt.Printf("error connecting: %s", err)
+			time.Sleep(time.Second)
+			continue
+		}
+	}
 
-	stream, err := newClientStream(ctx, desc, cc, method, opts...)
-	cc.streams[stream.Key()] = stream
+	if err == nil {
+		s, e := newClientStream(ctx, desc, cc, method, opts...)
+		cc.streams[s.Key()] = s
+		err = e
+		stream = s
+	}
 
 	return stream, err
 }
