@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/robertfarnum/go_pw_rpc/cmd/unit_test/pb"
-	"github.com/robertfarnum/go_pw_rpc/pkg/pw_rpc"
+	"github.com/robertfarnum/go-pw-rpc/cmd/unit_test/pb"
+	"github.com/robertfarnum/go-pw-rpc/pkg/pw_rpc"
 )
 
 func main() {

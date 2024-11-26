@@ -6,8 +6,8 @@ import (
 	"os"
 	"time"
 
-	"github.com/robertfarnum/go_pw_rpc/cmd/benchmark/pb"
-	"github.com/robertfarnum/go_pw_rpc/pkg/pw_rpc"
+	"github.com/robertfarnum/go-pw-rpc/cmd/benchmark/pb"
+	"github.com/robertfarnum/go-pw-rpc/pkg/pw_rpc"
 )
 
 func RunUnary(ctx context.Context, bc pb.BenchmarkClient, count int) {

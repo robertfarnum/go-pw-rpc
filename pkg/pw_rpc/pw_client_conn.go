@@ -7,8 +7,8 @@ import (
 	"os"
 	"sync"
 
-	"github.com/robertfarnum/go_pw_rpc/pkg/pw_hdlc"
-	"github.com/robertfarnum/go_pw_rpc/pkg/pw_rpc/pb"
+	"github.com/robertfarnum/go-pw-rpc/pkg/pw_hdlc"
+	"github.com/robertfarnum/go-pw-rpc/pkg/pw_rpc/pb"
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/proto"
 )

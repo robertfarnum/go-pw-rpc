@@ -11,7 +11,7 @@ import (
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/reflect/protoreflect"
 
-	"github.com/robertfarnum/go_pw_rpc/pkg/pw_rpc/pb"
+	"github.com/robertfarnum/go-pw-rpc/pkg/pw_rpc/pb"
 )
 
 const (

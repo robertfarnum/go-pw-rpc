@@ -6,7 +6,7 @@ import (
 	"io"
 	"sync"
 
-	"github.com/robertfarnum/go_pw_rpc/pkg/pw_varint"
+	"github.com/robertfarnum/go-pw-rpc/pkg/pw_varint"
 )
 
 type Decoder interface {
