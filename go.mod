@@ -1,4 +1,4 @@
-module github.com/robertfarnum/go_pw_rpc
+module github.com/robertfarnum/go-pw-rpc
 
 go 1.22.7
 
