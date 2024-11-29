@@ -29,10 +29,9 @@ type ClientConn struct {
 	mu       sync.Mutex
 }
 
-func NewClientConn(endpoint string, port int) *ClientConn {
+func NewClientConn(endpoint string) *ClientConn {
 	return &ClientConn{
 		endpoint: endpoint,
-		port:     port,
 		streams:  make(map[ClientStreamKey]*clientStream, 0),
 	}
 }
@@ -68,7 +67,7 @@ func (cc *ClientConn) processFrame(frame *pw_hdlc.Frame) error {
 func (cc *ClientConn) connect() (err error) {
 	cc.mu.Lock()
 	if cc.conn == nil {
-		cc.conn, err = net.Dial("tcp", fmt.Sprintf("%s:%d", cc.endpoint, cc.port))
+		cc.conn, err = net.Dial("tcp", fmt.Sprintf("%s", cc.endpoint))
 		if err != nil {
 			cc.mu.Unlock()
 			return err
@@ -90,6 +89,7 @@ func (cc *ClientConn) connect() (err error) {
 				}
 			}
 			cc.cancel()
+			cc.Close()
 		}()
 	}
 

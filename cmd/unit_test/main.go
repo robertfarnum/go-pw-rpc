@@ -11,7 +11,7 @@ import (
 
 func main() {
 	ctx := context.Background()
-	cc := pw_rpc.NewClientConn("localhost", 8111)
+	cc := pw_rpc.NewClientConn("localhost:8111")
 	defer cc.Close()
 
 	utc := pb.NewUnitTestClient(cc)

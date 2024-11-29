@@ -61,7 +61,7 @@ func RunBiDirectional(ctx context.Context, bc pb.BenchmarkClient, count int) err
 
 func main() {
 	ctx := context.Background()
-	cc := pw_rpc.NewClientConn("localhost", 8111)
+	cc := pw_rpc.NewClientConn("localhost:8111")
 	defer cc.Close()
 
 	bc := pb.NewBenchmarkClient(cc)
