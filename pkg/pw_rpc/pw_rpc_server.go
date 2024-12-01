@@ -98,7 +98,16 @@ func (s *server) HandleRequestPacket(ctx context.Context, conn Conn, packet *pb.
 			return err
 		}
 
-		return desc.Handler(service.serviceImpl, stream)
+		s.streamManager.AddStream(stream.GetStream())
+
+		go func() {
+			err := desc.Handler(service.serviceImpl, stream)
+			if err != nil {
+				fmt.Printf("Error handling stream: %s\n", err)
+			}
+		}()
+
+		return nil
 	}
 
 	return fmt.Errorf("method and stream not found: %d", packet.MethodId)
@@ -107,8 +116,14 @@ func (s *server) HandleRequestPacket(ctx context.Context, conn Conn, packet *pb.
 func (s *server) HandlePacket(ctx context.Context, conn Conn, packet *pb.RpcPacket) error {
 	switch packet.Type {
 	case pb.PacketType_REQUEST:
-		return s.HandleRequestPacket(ctx, conn, packet)
-	case pb.PacketType_CLIENT_STREAM:
+
+		err := s.HandleRequestPacket(ctx, conn, packet)
+		if err != nil {
+			fmt.Printf("Error handling request packet: %s\n", err)
+		}
+
+		return nil
+	case pb.PacketType_CLIENT_STREAM, pb.PacketType_CLIENT_REQUEST_COMPLETION, pb.PacketType_CLIENT_ERROR:
 		s := s.streamManager.GetStream(Key(packet.ServiceId), Key(packet.MethodId))
 		if s == nil {
 			return fmt.Errorf("stream not found: %d %d", packet.ServiceId, packet.MethodId)

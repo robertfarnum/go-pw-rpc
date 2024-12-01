@@ -11,7 +11,8 @@ import (
 
 func main() {
 	ctx := context.Background()
-	cc := pw_rpc.NewClient("localhost:8111")
+	cc := pw_rpc.NewClient("localhost:8112")
+	defer cc.Close()
 
 	utc := pb.NewUnitTestClient(cc)
 	in := &pb.TestRunRequest{
@@ -26,8 +27,7 @@ func main() {
 	}
 
 	for {
-		out := &pb.Event{}
-		err := streamingClient.RecvMsg(out)
+		out, err := streamingClient.Recv()
 		if err == nil {
 			switch evt := out.GetType().(type) {
 			case *pb.Event_TestRunStart:
@@ -42,6 +42,7 @@ func main() {
 				fmt.Println(evt.TestCaseDisabled.String())
 			case *pb.Event_TestCaseExpectation:
 				fmt.Println(evt.TestCaseExpectation.String())
+				return
 			}
 		}
 	}

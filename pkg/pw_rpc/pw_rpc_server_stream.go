@@ -10,6 +10,7 @@ import (
 
 type ServerStream interface {
 	grpc.ServerStream
+	GetStream() Stream
 }
 
 type serverStream struct {
@@ -46,9 +47,13 @@ func (ss *serverStream) RecvMsg(m any) error {
 }
 
 func (ss *serverStream) Close() {
-	//ss.s.Send([]byte{}, pb.PacketType_RESPONSE)
+	ss.s.Send([]byte{}, pb.PacketType_RESPONSE)
 
 	ss.s.Close()
+}
+
+func (ss *serverStream) GetStream() Stream {
+	return ss.s
 }
 
 func NewServerStream(ctx context.Context, desc *grpc.StreamDesc, conn Conn, method string, opts ...grpc.CallOption) (ServerStream, error) {

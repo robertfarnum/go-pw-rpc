@@ -1,7 +1,9 @@
 package pw_hdlc
 
 import (
+	"context"
 	"encoding/binary"
+	"fmt"
 	"hash/crc32"
 	"io"
 	"sync"
@@ -10,7 +12,7 @@ import (
 )
 
 type Decoder interface {
-	Decode() (*Frame, error)
+	Decode(context.Context) (*Frame, error)
 }
 
 func NewDecoder(reader io.Reader, address uint64) Decoder {
@@ -38,16 +40,22 @@ type decoder struct {
 	mu                sync.Mutex
 }
 
-func (d *decoder) Decode() (frame *Frame, err error) {
+func (d *decoder) Decode(ctx context.Context) (frame *Frame, err error) {
 	d.mu.Lock()
 
 	buf := make([]byte, 1)
 
 	for {
-		_, err = d.reader.Read(buf)
-		if err != nil {
-			break
+		select {
+		case <-ctx.Done():
+			return nil, fmt.Errorf("cancelled")
+		default:
+			_, err = d.reader.Read(buf)
+			if err != nil {
+				return nil, err
+			}
 		}
+
 		frame, err = d.process(buf[0])
 		if err == ErrUnavailable {
 			continue

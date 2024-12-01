@@ -21,6 +21,7 @@ var (
 type Client interface {
 	grpc.ClientConnInterface
 	PacketHandler
+	Close()
 }
 
 type client struct {
@@ -106,16 +107,7 @@ func (c *client) HandlePacket(ctx context.Context, conn Conn, packet *pb.RpcPack
 		return fmt.Errorf("client received client error packet")
 	case pb.PacketType_CLIENT_STREAM:
 		return fmt.Errorf("client received client stream packet")
-	case pb.PacketType_RESPONSE:
-		s := c.streamManager.GetStream(Key(packet.ServiceId), Key(packet.MethodId))
-		if s == nil {
-			return fmt.Errorf("stream not found: %d %d", packet.ServiceId, packet.MethodId)
-		}
-
-		s.PacketReceived(packet)
-
-		return nil
-	case pb.PacketType_SERVER_STREAM:
+	case pb.PacketType_RESPONSE, pb.PacketType_SERVER_STREAM, pb.PacketType_SERVER_ERROR:
 		s := c.streamManager.GetStream(Key(packet.ServiceId), Key(packet.MethodId))
 		if s == nil {
 			return fmt.Errorf("stream not found: %d %d", packet.ServiceId, packet.MethodId)
@@ -175,6 +167,10 @@ func (c *client) NewStream(ctx context.Context, desc *grpc.StreamDesc, method st
 	}
 
 	stream, err := NewClientStream(ctx, desc, c.conn, method, opts...)
+	if err != nil {
+		return nil, err
+	}
+
 	c.streamManager.AddStream(stream.GetStream())
 
 	return stream, err

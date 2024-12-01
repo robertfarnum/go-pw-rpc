@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"net"
 	"os"
-	"sync"
 
 	"github.com/robertfarnum/go-pw-rpc/pkg/pw_hdlc"
 	"github.com/robertfarnum/go-pw-rpc/pkg/pw_rpc/pb"
@@ -32,7 +31,6 @@ type conn struct {
 	encoder pw_hdlc.Encoder
 	decoder pw_hdlc.Decoder
 	ph      PacketHandler
-	mu      sync.Mutex
 }
 
 func NewConn(netConn net.Conn, ph PacketHandler) Conn {
@@ -54,7 +52,6 @@ func (c *conn) Recv(ctx context.Context) error {
 		default:
 			err := c.recv(ctx)
 			if err != nil {
-				fmt.Printf("Client Error: %s\n", err)
 				return err
 			}
 		}
@@ -85,7 +82,7 @@ func (c *conn) processFrame(ctx context.Context, frame *pw_hdlc.Frame) error {
 }
 
 func (c *conn) recv(ctx context.Context) error {
-	frame, err := c.decoder.Decode()
+	frame, err := c.decoder.Decode(ctx)
 	if err != nil {
 		return err
 	}
