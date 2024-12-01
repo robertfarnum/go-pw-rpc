@@ -6,7 +6,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/robertfarnum/go-pw-rpc/cmd/benchmark/pb"
+	"github.com/robertfarnum/go-pw-rpc/cmd/pb"
 	"github.com/robertfarnum/go-pw-rpc/pkg/pw_rpc"
 )
 
@@ -61,12 +61,10 @@ func RunBiDirectional(ctx context.Context, bc pb.BenchmarkClient, count int) err
 
 func main() {
 	ctx := context.Background()
-	cc := pw_rpc.NewClientConn("localhost:8111")
-	defer cc.Close()
-
+	cc := pw_rpc.NewClient("localhost:8111")
 	bc := pb.NewBenchmarkClient(cc)
 
-	go RunUnary(ctx, bc, 10)
+	RunUnary(ctx, bc, 10)
 
-	RunBiDirectional(ctx, bc, 10)
+	//RunBiDirectional(ctx, bc, 10)
 }

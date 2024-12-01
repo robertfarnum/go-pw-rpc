@@ -5,14 +5,13 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/robertfarnum/go-pw-rpc/cmd/unit_test/pb"
+	"github.com/robertfarnum/go-pw-rpc/cmd/pb"
 	"github.com/robertfarnum/go-pw-rpc/pkg/pw_rpc"
 )
 
 func main() {
 	ctx := context.Background()
-	cc := pw_rpc.NewClientConn("localhost:8111")
-	defer cc.Close()
+	cc := pw_rpc.NewClient("localhost:8111")
 
 	utc := pb.NewUnitTestClient(cc)
 	in := &pb.TestRunRequest{

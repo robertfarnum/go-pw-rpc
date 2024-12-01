@@ -38,28 +38,31 @@ type decoder struct {
 	mu                sync.Mutex
 }
 
-func (d *decoder) Decode() (*Frame, error) {
+func (d *decoder) Decode() (frame *Frame, err error) {
 	d.mu.Lock()
 
 	buf := make([]byte, 1)
 
 	for {
-		_, err := d.reader.Read(buf)
+		_, err = d.reader.Read(buf)
 		if err != nil {
-			d.mu.Unlock()
-			return nil, ErrDataLoss
+			break
 		}
-		frame, err := d.process(buf[0])
+		frame, err = d.process(buf[0])
 		if err == ErrUnavailable {
 			continue
 		} else if err != nil {
-			d.mu.Unlock()
-			return nil, err
+			break
 		}
 
-		d.mu.Unlock()
-		return frame, err
+		break
 	}
+
+	d.reset()
+
+	d.mu.Unlock()
+
+	return frame, err
 }
 
 func (d *decoder) parse(frame []byte) (*Frame, error) {
@@ -78,18 +81,18 @@ func (d *decoder) parse(frame []byte) (*Frame, error) {
 }
 
 func (d *decoder) reset() {
+	d.lastReadBytes = make([]byte, 4)
 	d.currentFrameSize = 0
 	d.lastReadByteIndex = 0
 	d.fcs = 0
-	d.state = kInterFrame
-	d.buffer = d.buffer[:0]
+	d.buffer = make([]byte, 0)
 }
 
 func (d *decoder) escape(b byte) byte {
 	return b ^ kEscapeConstant
 }
 
-func (d *decoder) process(newByte byte) (*Frame, error) {
+func (d *decoder) process(newByte byte) (frame *Frame, err error) {
 	switch d.state {
 	case kInterFrame:
 		if newByte == kFlag {
@@ -97,28 +100,26 @@ func (d *decoder) process(newByte byte) (*Frame, error) {
 
 			// Report an error if non-flag bytes were read between frames.
 			if d.currentFrameSize != 0 {
-				d.reset()
-				return nil, ErrDataLoss
+				err = ErrDataLoss
+				break
 			}
 		} else {
 			// Count bytes to track how many are discarded.
 			d.currentFrameSize += 1
 		}
-		return nil, ErrUnavailable // Report error when starting a new frame.
+
+		err = ErrUnavailable // Report error when starting a new frame.
 	case kFrame:
 		if newByte == kFlag {
-			err := d.checkFrame()
-			if err != nil {
-				d.reset()
+			err = d.checkFrame()
 
-				return nil, err
+			completedFrameSize := d.currentFrameSize
+
+			if err == nil {
+				frame, err = d.parse(d.buffer[0:completedFrameSize])
 			}
 
-			frame, err := d.parse(d.buffer[0:d.currentFrameSize])
-
-			d.reset()
-
-			return frame, err
+			break
 		}
 
 		if newByte == kEscape {
@@ -126,13 +127,15 @@ func (d *decoder) process(newByte byte) (*Frame, error) {
 		} else {
 			d.appendByte(newByte)
 		}
-		return nil, ErrUnavailable
+
+		err = ErrUnavailable
 	case kFrameEscape:
 		// The flag character cannot be escaped; return an error.
 		if newByte == kFlag {
 			d.state = kFrame
-			d.reset()
-			return nil, ErrDataLoss
+			err = ErrDataLoss
+
+			break
 		}
 
 		if newByte == kEscape {
@@ -146,10 +149,11 @@ func (d *decoder) process(newByte byte) (*Frame, error) {
 			d.state = kFrame
 			d.appendByte(d.escape(newByte))
 		}
-		return nil, ErrUnavailable
+
+		err = ErrUnavailable
 	}
 
-	return nil, ErrDataLoss
+	return frame, err
 }
 
 func (d *decoder) appendByte(newByte byte) {
@@ -203,5 +207,6 @@ func (d *decoder) verifyFrameCheckSequence() bool {
 	}
 
 	fcs := binary.LittleEndian.Uint32(fcsBuffer)
+
 	return fcs == d.fcs
 }
