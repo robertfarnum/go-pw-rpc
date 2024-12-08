@@ -20,6 +20,7 @@ type Server interface {
 
 	RegisterService(desc *grpc.ServiceDesc, impl any)
 	Listen(ctx context.Context) error
+	GetConn() Conn
 	Close()
 }
 
@@ -49,6 +50,10 @@ func NewServer(endpoint string) Server {
 		services:      make(map[Key]*serviceInfo),
 		streamManager: NewStreamManager(),
 	}
+}
+
+func (s *server) GetConn() Conn {
+	return s.conn
 }
 
 func (s *server) HandleRequestPacket(ctx context.Context, conn Conn, packet *pb.RpcPacket) error {
@@ -87,13 +92,13 @@ func (s *server) HandleRequestPacket(ctx context.Context, conn Conn, packet *pb.
 			return err
 		}
 
-		return stream.Send(payload, pb.PacketType_RESPONSE)
+		return stream.Send(payload, pb.StatusCode_OK, pb.PacketType_RESPONSE)
 	}
 
 	desc, ok := service.streams[Key(packet.MethodId)]
 	if ok {
 		method := fmt.Sprintf("/%s/%s", service.name, desc.StreamName)
-		stream, err := NewServerStream(ctx, desc, conn, method, nil)
+		stream, err := NewServerStream(ctx, desc, s, method, nil)
 		if err != nil {
 			return err
 		}
@@ -210,11 +215,14 @@ func (s *server) Listen(ctx context.Context) (err error) {
 			s.conn = NewConn(conn, s)
 
 			go func() {
+				ctx, cancel := context.WithCancel(ctx)
+
 				err := s.conn.Recv(ctx)
 				if err != nil {
 					fmt.Printf("Client Disconnect: %s\n", err)
-					return
 				}
+
+				cancel()
 			}()
 		}
 	}

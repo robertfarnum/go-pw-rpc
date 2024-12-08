@@ -14,8 +14,7 @@ type ServerStream interface {
 }
 
 type serverStream struct {
-	s    Stream
-	conn Conn
+	s Stream
 }
 
 // Context implements grpc.ServerStream.
@@ -39,15 +38,17 @@ func (ss *serverStream) SetTrailer(metadata.MD) {
 }
 
 func (ss *serverStream) SendMsg(m any) error {
-	return ss.s.Send(m, pb.PacketType_SERVER_STREAM)
+	return ss.s.Send(m, pb.StatusCode_OK, pb.PacketType_SERVER_STREAM)
 }
 
 func (ss *serverStream) RecvMsg(m any) error {
-	return ss.s.Recv(m)
+	_, _, err := ss.s.Recv(m)
+
+	return err
 }
 
 func (ss *serverStream) Close() {
-	ss.s.Send([]byte{}, pb.PacketType_RESPONSE)
+	ss.s.Send([]byte{}, pb.StatusCode_OK, pb.PacketType_RESPONSE)
 
 	ss.s.Close()
 }
@@ -56,16 +57,15 @@ func (ss *serverStream) GetStream() Stream {
 	return ss.s
 }
 
-func NewServerStream(ctx context.Context, desc *grpc.StreamDesc, conn Conn, method string, opts ...grpc.CallOption) (ServerStream, error) {
-	s, err := NewStream(ctx, desc, conn, method, opts...)
+func NewServerStream(ctx context.Context, desc *grpc.StreamDesc, server Server, method string, opts ...grpc.CallOption) (ServerStream, error) {
+	stream, err := NewStream(ctx, desc, server.GetConn(), method, opts...)
 	if err != nil {
 		return nil, err
 	}
 
-	stream := &serverStream{
-		s:    s,
-		conn: conn,
+	serverStream := &serverStream{
+		s: stream,
 	}
 
-	return stream, nil
+	return serverStream, nil
 }

@@ -36,8 +36,8 @@ func NewStreamKey(serviceName string, methodName string) StreamKey {
 type Stream interface {
 	Key() StreamKey
 	Context() context.Context
-	Send(any, pb.PacketType) error
-	Recv(any) error
+	Send(any, pb.StatusCode, pb.PacketType) error
+	Recv(any) (pb.PacketType, pb.StatusCode, error)
 	PacketReceived(*pb.RpcPacket)
 	Close()
 }
@@ -83,13 +83,13 @@ func NewStream(ctx context.Context, desc *grpc.StreamDesc, conn Conn, method str
 		method: method,
 		opts:   opts,
 		key:    NewStreamKey(serviceName, methodName),
-		ch:     make(chan *pb.RpcPacket),
+		ch:     make(chan *pb.RpcPacket, 2),
 		ctx:    ctx,
 		cancel: cancel,
 	}, nil
 }
 
-func (s *stream) Send(m any, packetType pb.PacketType) (err error) {
+func (s *stream) Send(m any, statusCode pb.StatusCode, packetType pb.PacketType) (err error) {
 	payload := []byte{}
 
 	if m != nil {
@@ -109,32 +109,33 @@ func (s *stream) Send(m any, packetType pb.PacketType) (err error) {
 		ServiceId: uint32(s.key.serviceId),
 		MethodId:  uint32(s.key.methodId),
 		Payload:   payload,
+		Status:    uint32(statusCode),
 	}
 
 	return s.conn.Send(s.ctx, packet)
 }
 
-func (s *stream) Recv(m any) error {
+func (s *stream) Recv(m any) (pb.PacketType, pb.StatusCode, error) {
 	pm, ok := m.(protoreflect.ProtoMessage)
 	if !ok {
-		return fmt.Errorf("message not a ProtoMessage")
+		return pb.PacketType(-1), 0, fmt.Errorf("message not a ProtoMessage")
 	}
 
 	for {
 		select {
 		case <-s.ctx.Done():
-			return fmt.Errorf("cancel")
+			return pb.PacketType(-1), 0, nil // Not an error to cancel the stream
 		case packet, ok := <-s.ch:
 			if !ok || packet.ChannelId != kHDLCChannel || Key(packet.ServiceId) != s.key.serviceId || Key(packet.MethodId) != s.key.methodId {
-				return fmt.Errorf("invalid packet received")
+				return pb.PacketType(-1), 0, fmt.Errorf("invalid packet received")
 			}
 
 			err := proto.Unmarshal(packet.Payload, pm)
 			if err != nil {
-				return err
+				return packet.Type, 0, err
 			}
 
-			return nil
+			return packet.Type, 0, nil
 		}
 	}
 }

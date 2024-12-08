@@ -71,7 +71,7 @@ func main() {
 
 	s := pw_rpc.NewServer("localhost:8112")
 
-	uts := UnitTestServer{}
+	uts := &UnitTestServer{}
 
 	pb.RegisterUnitTestServer(s, uts)
 

@@ -32,7 +32,7 @@ func main() {
 
 	s := pw_rpc.NewServer("localhost:8111")
 
-	bs := BenchmarkServer{}
+	bs := &BenchmarkServer{}
 
 	pb.RegisterBenchmarkServer(s, bs)
 

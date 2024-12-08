@@ -21,6 +21,8 @@ var (
 type Client interface {
 	grpc.ClientConnInterface
 	PacketHandler
+	GetConn() Conn
+	CloseStream(Stream)
 	Close()
 }
 
@@ -89,14 +91,27 @@ func (c *client) connect(ctx context.Context) error {
 		}
 		c.mu.Unlock()
 
+		ctx, cancel := context.WithCancel(ctx)
 		err := c.conn.Recv(ctx)
 		if err != nil {
 			fmt.Printf("Server Disconnect: %s\n", err)
-			return
+			c.mu.Lock()
+			c.conn.Close()
+			c.conn = nil
+			c.mu.Unlock()
 		}
+		cancel()
 	}()
 
 	return err
+}
+
+func (c *client) GetConn() Conn {
+	return c.conn
+}
+
+func (c *client) CloseStream(stream Stream) {
+	c.streamManager.RemoveStream(stream)
 }
 
 func (c *client) HandlePacket(ctx context.Context, conn Conn, packet *pb.RpcPacket) error {
@@ -145,11 +160,11 @@ func (c *client) Invoke(ctx context.Context, method string, args, reply any, opt
 
 	c.streamManager.AddStream(stream)
 
-	if err := stream.Send(args, pb.PacketType_REQUEST); err != nil {
+	if err := stream.Send(args, pb.StatusCode_OK, pb.PacketType_REQUEST); err != nil {
 		return err
 	}
 
-	err = stream.Recv(reply)
+	_, _, err = stream.Recv(reply)
 
 	c.streamManager.RemoveStream(stream)
 
@@ -166,7 +181,7 @@ func (c *client) NewStream(ctx context.Context, desc *grpc.StreamDesc, method st
 		return nil, fmt.Errorf("connection is nil")
 	}
 
-	stream, err := NewClientStream(ctx, desc, c.conn, method, opts...)
+	stream, err := NewClientStream(ctx, desc, c, method, opts...)
 	if err != nil {
 		return nil, err
 	}
